@@ -1,5 +1,24 @@
-import { copyFile, cp, mkdir, readFile, readdir, rename, unlink, writeAtomic, writeFile } from "@toonflow/file";
+import { copyFile, cp, lstat, mkdir, readFile, readdir, rename, unlink, writeAtomic, writeFile } from "@toonflow/file";
 import { resolve } from "node:path";
+
+async function copyMissingDirectories(targetDirectory: string, sourceDirectory: string) {
+  const entries = await readdir(sourceDirectory, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (!entries) return;
+  await mkdir(targetDirectory, { recursive: true });
+  // ACT: 已初始化后只补全新内置技能/团队目录，不覆盖用户改过的同名目录。
+  for (const entry of entries.filter(item => item.isDirectory())) {
+    const target = resolve(targetDirectory, entry.name);
+    const existing = await lstat(target).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    if (existing) continue;
+    await cp(resolve(sourceDirectory, entry.name), target, { recursive: true, force: false });
+  }
+}
 
 export default async function initializePlugins(targetDirectory: string, sourceDirectory: string, fileFilter?: RegExp | readonly string[], revision?: string) {
   const marker = resolve(targetDirectory, "initialized");
@@ -7,6 +26,10 @@ export default async function initializePlugins(targetDirectory: string, sourceD
     if (error.code === "ENOENT") return null;
     throw error;
   });
+  if (initialized !== null && revision === undefined && !fileFilter) {
+    await copyMissingDirectories(targetDirectory, sourceDirectory);
+    return;
+  }
   if (initialized !== null && (revision === undefined || initialized === revision)) return;
 
   const entries = await readdir(sourceDirectory, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
