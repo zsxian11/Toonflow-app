@@ -101,6 +101,11 @@ watch(
     }
     const apiKey = typeof key === "string" ? key.trim() : "";
     if (!apiKey) return;
+    // ACT: 报错文案若被误贴进密钥框，Authorization 会含非 ASCII 并掩盖真实 401 原因。
+    if (/模型列表获取失败|请检查 API|HTTP \d{3}/.test(apiKey) || /[^\x00-\x7F]/.test(apiKey)) {
+      modelError.value = "API Key 无效：请清空后重新粘贴 DeepSeek 控制台中的密钥（通常以 sk- 开头），不要粘贴错误提示文字";
+      return;
+    }
     const controller = new AbortController();
     fetching.value = true;
     // ACT: 输入停顿后自动获取；输入变化时立即取消旧请求，避免逐字请求和结果串到新密钥。
