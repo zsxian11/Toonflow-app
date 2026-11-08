@@ -40,6 +40,22 @@
       <div v-else class="imageEmpty" role="img" aria-label="暂无生成图片">
         <icon-photo-ai :size="48" stroke="1.25" aria-hidden="true" />
       </div>
+      <div v-if="candidates.length > 1 && !editor?.mode" class="candidateBar" role="toolbar" aria-label="生成候选">
+        <el-button
+          v-for="(item, index) in candidates"
+          :key="`${item.url}-${index}`"
+          class="candidateButton"
+          size="small"
+          text
+          :type="candidateIndex === index ? 'primary' : 'default'"
+          :disabled="generating || deleting || uploading"
+          :aria-pressed="candidateIndex === index"
+          :aria-label="`候选 ${index + 1}`"
+          @click.stop="selectCandidate(index)">
+          {{ index + 1 }}
+        </el-button>
+        <span class="candidateHint">点击采用</span>
+      </div>
     </div>
     <template v-if="editor?.mode !== 'mark'" #bottom>
       <div v-if="lightingVisible" ref="lightingTarget" />
@@ -154,7 +170,20 @@ const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals 
   onModelsChanged: () => void refreshProviderModels(),
 });
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
-const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; inpaintPrompt: string; inpaintPromptModel: PromptModel; model: string; size: string; ratio: string; other: Record<string, unknown>; inpaint?: ImageInpaint });
+type ImageCandidate = { url: string; mimeType: string };
+const data = computed(() => node.data as {
+  prompt: string;
+  promptModel: PromptModel;
+  inpaintPrompt: string;
+  inpaintPromptModel: PromptModel;
+  model: string;
+  size: string;
+  ratio: string;
+  other: Record<string, unknown>;
+  candidates?: ImageCandidate[];
+  candidateIndex?: number;
+  inpaint?: ImageInpaint;
+});
 data.value.prompt ??= "";
 data.value.promptModel ??= [];
 data.value.inpaintPrompt ??= "";
@@ -163,6 +192,8 @@ data.value.model ??= "";
 data.value.size ??= "";
 data.value.ratio ??= "16:9";
 data.value.other ??= {};
+data.value.candidates ??= [];
+data.value.candidateIndex ??= 0;
 const { refList, referenceMentions, materialMentions, selectMaterialReference, selectAssetReference, setReferencePreview, removeReference } = useNodeReferences();
 const models = shallowRef<NodeMediaModel[]>([]);
 const modelsLoading = ref(false);
@@ -188,11 +219,20 @@ let generationController: AbortController | undefined;
 const generationState = useNodeGeneration(outputs, () => generationController?.abort(), {
   ai,
   async recover(results, task, signal) {
-    if (!task.recoveryData) return results;
-    const recovery = task.recoveryData as { input: NodeImageRequest; inpaint: ImageInpaint };
-    if (!recovery.input || !recovery.inpaint) throw new Error("局部重绘任务缺少恢复素材");
-    return generateInpaint(recovery.input, recovery.inpaint, signal, results.filter(result => result.mediaType === "image"));
+    if (task.recoveryData) {
+      const recovery = task.recoveryData as { input: NodeImageRequest; inpaint: ImageInpaint };
+      if (!recovery.input || !recovery.inpaint) throw new Error("局部重绘任务缺少恢复素材");
+      return generateInpaint(recovery.input, recovery.inpaint, signal, results.filter(result => result.mediaType === "image"));
+    }
+    applyCandidates(results.filter(result => result.mediaType === "image").map(result => ({ url: result.path, mimeType: result.mimeType })));
+    return results;
   },
+});
+const candidates = computed(() => Array.isArray(data.value.candidates) ? data.value.candidates : []);
+const candidateIndex = computed(() => {
+  const index = data.value.candidateIndex;
+  if (!Number.isInteger(index) || index! < 0 || index! >= candidates.value.length) return 0;
+  return index!;
 });
 const { generating, pendingRecovery, cancelling } = generationState;
 let generation: Promise<void> | undefined;
@@ -209,6 +249,30 @@ const generationPrompt = computed(() =>
     .filter(Boolean)
     .join("\n\n")
 );
+function applyCandidates(items: ImageCandidate[], preferredIndex = 0) {
+  const list = items.filter(item => item.url && item.mimeType);
+  data.value.candidates = list;
+  const index = list.length ? Math.min(Math.max(0, preferredIndex), list.length - 1) : 0;
+  data.value.candidateIndex = index;
+  const selected = list[index];
+  if (selected) outputs.value.image = { dataType: "IMAGE", value: { url: selected.url, mimeType: selected.mimeType } };
+}
+
+function adoptCandidate(index: number) {
+  if (generating.value || deleting.value || uploading.value) throw new Error("节点正在处理，请稍后采用候选");
+  if (!Number.isInteger(index) || index < 0 || index >= candidates.value.length) throw new Error("候选序号无效");
+  applyCandidates(candidates.value, index);
+  return { index, candidate: candidates.value[index], count: candidates.value.length };
+}
+
+function selectCandidate(index: number) {
+  try {
+    adoptCandidate(index);
+  } catch (error) {
+    showNodeError(error, "采用候选失败");
+  }
+}
+
 const generationInput = computed<Omit<NodeImageRequest, "directory"> | undefined>(() => {
   const choice = selectedModel.value;
   if (!choice) return;
@@ -287,7 +351,7 @@ async function replaceOutput(event: Event) {
       return;
     }
     // ACT: 保留历史输出文件，避免破坏撤销记录和复制节点的引用。
-    outputs.value.image = { dataType: "IMAGE", value: { url, mimeType } };
+    applyCandidates([{ url, mimeType }], 0);
   } catch (error) {
     showNodeError(error, "图片替换失败");
   } finally {
@@ -357,10 +421,11 @@ async function startGeneration() {
         ? generateInpaint({ ...input, directory }, inpaintData, controller.signal)
         : generationState.generate("image", { ...input, directory }, controller.signal);
     })
-    .then(([result]) => {
+    .then((results) => {
       controller.signal.throwIfAborted();
-      if (!result) throw new Error("供应商未返回图片");
-      outputs.value.image = { dataType: "IMAGE", value: { url: result.path, mimeType: result.mimeType } };
+      const images = results.filter(result => result.mediaType === "image").map(result => ({ url: result.path, mimeType: result.mimeType }));
+      if (!images.length) throw new Error("供应商未返回图片");
+      applyCandidates(images, 0);
     }))
     .catch((error) => showNodeError(error, "图片生成失败"))
     .finally(() => {
@@ -420,6 +485,7 @@ function startEditor(mode: "inpaint" | "mark") {
 }
 
 function getConfig() {
+  const n = data.value.other.n;
   return {
     config: {
       providerId: selectedModel.value?.providerId ?? "",
@@ -427,8 +493,11 @@ function getConfig() {
       size: data.value.size,
       ratio: data.value.ratio,
       other: { ...data.value.other },
+      ...(typeof n === "number" && Number.isFinite(n) ? { n: Math.trunc(n) } : {}),
     },
     models: models.value,
+    candidates: candidates.value.map((item, index) => ({ index, url: item.url, mimeType: item.mimeType, adopted: index === candidateIndex.value })),
+    candidateIndex: candidateIndex.value,
   };
 }
 
@@ -446,12 +515,13 @@ nodeTools.register({
 
 nodeTools.register({
   name: "setConfig",
-  description: "修改此图片生成节点的模型、分辨率、比例或自定义配置 other；先用 getConfig 查询可选能力，providerId 与 modelId 必须同时提供；other 按目标模型 rules 的 field 和值要求填写，仅更新传入字段，其余保留，切换模型时使用新模型默认值；不修改提示词、不启动生成",
+  description: "修改此图片生成节点的模型、分辨率、比例、生成数量 n 或自定义配置 other；先用 getConfig 查询可选能力，providerId 与 modelId 必须同时提供；n 写入 other.n（1–16）供支持批量的供应商使用；other 按目标模型 rules 的 field 和值要求填写，仅更新传入字段，其余保留，切换模型时使用新模型默认值；不修改提示词、不启动生成",
   parameters: z.strictObject({
     providerId: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
     size: z.string().min(1).optional(),
     ratio: z.string().min(1).optional(),
+    n: z.number().int().min(1).max(16).optional(),
     other: z.record(z.string(), z.json()).optional(),
   }).refine((args) => (args.providerId === undefined) === (args.modelId === undefined), "providerId 与 modelId 必须同时提供"),
   async execute(args, { signal }) {
@@ -468,11 +538,34 @@ nodeTools.register({
     if (args.size !== undefined && !sizes.includes(args.size)) throw new Error(`当前模型不支持分辨率 ${args.size}，可选：${sizes.join("、")}`);
     if (args.ratio !== undefined && !ratios.includes(args.ratio)) throw new Error(`当前模型不支持比例 ${args.ratio}，可选：${ratios.join("、")}`);
     const other = getModelFormValues(choice, choice === selectedModel.value ? data.value.other : {}, args.other);
+    if (args.n !== undefined) other.n = args.n;
     data.value.model = getNodeModelKey(choice);
     if (args.size !== undefined) data.value.size = args.size;
     if (args.ratio !== undefined) data.value.ratio = args.ratio;
     data.value.other = other;
     return getConfig();
+  },
+});
+
+nodeTools.register({
+  name: "listImageResults",
+  description: "列出此节点最近一次生成保留的候选图片及当前采用序号；未生成时返回空列表",
+  parameters: z.strictObject({}),
+  execute() {
+    return {
+      candidates: candidates.value.map((item, index) => ({ index, url: item.url, mimeType: item.mimeType, adopted: index === candidateIndex.value })),
+      candidateIndex: candidateIndex.value,
+      count: candidates.value.length,
+    };
+  },
+});
+
+nodeTools.register({
+  name: "adoptImageResult",
+  description: "将指定序号的候选图片设为节点输出；序号来自 listImageResults 的 index",
+  parameters: z.strictObject({ index: z.number().int().min(0) }),
+  execute({ index }) {
+    return adoptCandidate(index);
   },
 });
 
@@ -525,6 +618,28 @@ nodeTools.register({
   min-height: 144px;
   overflow: hidden;
   border-radius: var(--el-border-radius-base);
+
+  .candidateBar {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    padding: 4px 6px;
+    border-radius: var(--el-border-radius-base);
+    background: color-mix(in srgb, var(--el-bg-color) 88%, transparent);
+    backdrop-filter: blur(6px);
+  }
+
+  .candidateHint {
+    margin-left: 4px;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+  }
 
   .inpaintGuide {
     position: relative;

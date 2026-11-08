@@ -187,7 +187,19 @@ async function prepareRequest<T>(directory: string | undefined, mediaType: "imag
     type: "audio" as const, model: request.modelId, text: request.prompt, images, audios: await references(request.audios, "audio"), other: request.other,
     voice: request.voice, speed: request.speed, volume: request.volume, pitch: request.pitch, language: request.language, format: request.format, sampleRate: request.sampleRate,
   };
-  if (mediaType === "image") return { type: "image" as const, model: request.modelId, prompt: request.prompt, images, ratio: request.ratio, size: request.size, other: request.other };
+  if (mediaType === "image") {
+    const count = typeof request.other?.n === "number" && Number.isFinite(request.other.n) ? Math.trunc(request.other.n) : undefined;
+    return {
+      type: "image" as const,
+      model: request.modelId,
+      prompt: request.prompt,
+      images,
+      ratio: request.ratio,
+      size: request.size,
+      other: request.other,
+      ...(count && count > 0 ? { n: Math.min(16, count) } : {}),
+    };
+  }
   return {
     type: "video" as const, model: request.modelId, prompt: request.prompt, images, other: request.other,
     ...(referenceOrder ? { referenceOrder } : {}),
