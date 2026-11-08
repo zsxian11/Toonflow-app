@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "source": { "path": "source/novel.txt", "title": "示例小说" },
+  "settingConstraints": "古代仙侠；禁止现代服饰与枪械",
+  "characters": [
+    {
+      "id": "linFeng",
+      "name": "林风",
+      "role": "少年修士主角",
+      "importance": "main",
+      "appearance": "清瘦、黑发束冠、剑眉",
+      "costume": "青灰色劲装，腰悬木剑",
+      "speciesOrAge": "人类少年约十六岁",
+      "sourceQuotes": ["他青衫束发，腰间一柄未开刃的木剑"],
+      "inferred": false,
+      "views": [
+        {
+          "key": "sheet",
+          "prompt": "国风写实插画角色参考板，同一角色为林风，少年修士，人类少年约十六岁。外观锚点：清瘦、黑发束冠、剑眉。服饰：青灰色劲装，腰悬木剑。约束：古代仙侠；禁止现代服饰与枪械。同一画面横向排列：头部特写、正面完整全身、右侧90°完整全身、背面完整全身。各视角身份与状态一致，全身尺度一致，不裁切、不重叠。自然静态姿态，中性表情，简洁背景。无剧情场景、其他角色、水印或尺寸标注。",
+          "status": "draft"
+        }
+      ],
+      "refImagePaths": [],
+      "adoptedImagePaths": []
+    }
+  ]
+}

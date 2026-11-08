@@ -3,9 +3,10 @@ import { createToolConfig } from "@toonflow/tools-scaffold";
 await createToolConfig({
   name: "workspace",
   displayName: "工作区文件",
-  description: "读取、列出和编辑当前工作区内的文件，搜索文件内容、查找文件，下载远程图片到工作区。",
+  description: "读取、列出和编辑当前工作区内的文件，扫描长篇小说或剧本的全文目录，搜索文件内容、查找文件，下载远程图片到工作区。",
   prompt: `路径相对于当前工作区解析。文件修改不得越出工作区；全局技能目录只允许读取技能及其附带资料。
 grep 搜索文件内容、find 查找文件，范围严格限定在当前工作区，不搜索全局技能目录。
+小说、剧本等长文本用 sourceText 扫描全文目录，再按章摘录或读取。read 单次约 50KB，不能把截断结果当成全文。
 修改已有文件前先读取相关内容，避免覆盖用户已有修改。
 存在与任务匹配的可用技能时，先阅读技能目录中的 SKILL.md，再按需读取其引用的本地资料；不要一次加载全部技能，也不要只凭名称猜测技能内容。`,
   author: "Toonflow",

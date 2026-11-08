@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "confirmed": true,
+  "activeEpisodeId": "ep001",
+  "defaultVideoProviderId": "comfyui",
+  "defaultVideoModelId": "comfyVideo",
+  "events": [
+    { "id": "e1", "chapter": "第1章", "summary": "林风入山求剑", "characters": ["linFeng"] },
+    { "id": "e2", "chapter": "第1章", "summary": "遇旧识阻拦", "characters": ["linFeng"] }
+  ],
+  "episodes": [
+    {
+      "id": "ep001",
+      "title": "入山",
+      "chapterRange": "第1章",
+      "eventIds": ["e1", "e2"],
+      "summary": "林风入山求剑并遭遇阻拦",
+      "targetDurationSec": 60,
+      "segmentCount": 4,
+      "videoProviderId": "comfyui",
+      "videoModelId": "comfyVideo",
+      "status": "confirmed"
+    }
+  ]
+}

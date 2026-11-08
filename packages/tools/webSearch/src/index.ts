@@ -6,10 +6,9 @@ import {
   DEEPSEEK_DEFAULT_MAX_USES,
   DEEPSEEK_DEFAULT_MODEL,
 } from "@deepseek-ai/dsh-web-search-deepseek";
-import { search } from "duck-duck-scrape";
-import { COMMON_HEADERS } from "duck-duck-scrape/lib/util";
 import { z } from "zod";
 import type { ToolDefinition, ToolPlugin } from "@toonflow/tools-scaffold/runtime";
+import { searchFree } from "./freeSearch";
 
 const configSchema = z.object({
   provider: z.enum(["duckduckgo", "deepseek", "tavily"]).default("duckduckgo"),
@@ -43,30 +42,20 @@ const plugin: ToolPlugin = {
         const timeout = AbortSignal.timeout(config.timeoutMs);
         const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
         requestSignal.throwIfAborted();
-        let result: { sources: readonly { url: string; title?: string; snippet?: string; publishedAt?: string }[]; truncated: boolean };
+        let result: { sources: readonly { url: string; title?: string; snippet?: string; publishedAt?: string }[]; truncated: boolean; engine?: string; notice?: string };
         if (config.provider === "duckduckgo") {
-          const cancelled = Promise.withResolvers<never>();
-          const onAbort = () => cancelled.reject(requestSignal.reason);
-          requestSignal.addEventListener("abort", onAbort, { once: true });
           try {
-            // ACT: Needle 在 Bun 下取消后可能不结束 Promise；signal 销毁请求，竞速保证工具及时退出。
-            const response = await Promise.race([cancelled.promise, search(query, undefined, {
-              headers: COMMON_HEADERS,
-              signal: requestSignal,
-              open_timeout: config.timeoutMs,
-              response_timeout: config.timeoutMs,
-              read_timeout: config.timeoutMs,
-            })]);
+            const free = await searchFree(query, requestSignal, config.maxResults);
             result = {
-              sources: response.results.map(item => ({ url: item.url, title: item.title, snippet: item.description.replace(/<\/?b>/g, "") })),
+              sources: free.sources,
               truncated: false,
+              engine: free.engine,
+              ...(free.failures.length ? { notice: `${free.failures.join("；")}。已改用 ${free.engine}` } : {}),
             };
           } catch (error) {
             signal?.throwIfAborted();
             const message = error instanceof Error ? error.message : String(error);
-            throw new Error(`DuckDuckGo 搜索${timeout.aborted ? "超时" : "失败"}。可稍后重试，或前往「设置 → 插件市场 → 已安装 → 联网搜索 → 配置」，将搜索服务切换为 DeepSeek（填写官方 API Key）或 Tavily（填写 Tavily API Key）。\n原因：${message}`, { cause: error });
-          } finally {
-            requestSignal.removeEventListener("abort", onAbort);
+            throw new Error(`联网搜索${timeout.aborted ? "超时" : "失败"}。可稍后重试，或前往「设置 → 插件市场 → 已安装 → 联网搜索 → 配置」，将搜索服务切换为 DeepSeek（填写官方 API Key）或 Tavily（填写 Tavily API Key）。\n原因：${message}`, { cause: error });
           }
         } else if (config.provider === "deepseek") {
           context.requireDirectModelAccess?.();

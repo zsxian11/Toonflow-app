@@ -1,6 +1,6 @@
 # 联网搜索
 
-搜索公开网页，为 Agent 提供标题、来源链接和摘要。默认使用 `duck-duck-scrape` 调用 DuckDuckGo，无需注册或填写 API Key，也可切换为 DeepSeek 或 Tavily。
+搜索公开网页，为 Agent 提供标题、来源链接和摘要。默认无需 API Key：先请求 DuckDuckGo 的 HTML 结果，失败或没有结果时改用 Bing。请求走应用的网络设置。也可切换为 DeepSeek 或 Tavily。
 
 ## 使用方式
 
@@ -11,13 +11,13 @@
 
 在“设置 → 插件市场 → 已安装”找到“联网搜索”，点击“配置”。
 
-- “搜索服务”：默认 DuckDuckGo（免 Key），可选 DeepSeek、Tavily。
+- “搜索服务”：默认免 Key（DuckDuckGo，失败时用 Bing），可选 DeepSeek、Tavily。
 - “DeepSeek API Key”：选择 DeepSeek 后必填，填写官方 DeepSeek 密钥；兼容此前保存的密钥。
 - “Tavily API Key”：选择 Tavily 后必填，填写 Tavily 密钥。两种服务的密钥分别保存。
 - “最多返回结果”：默认 8 条，可设为 1–20 条。
 - “超时（毫秒）”：默认 30000，可设为 1000–60000。
 
-DuckDuckGo 需要当前网络能够访问，可能遇到限流或验证码；失败或超时时会显示原始错误原因，并提示前往「设置 → 插件市场 → 已安装 → 联网搜索 → 配置」，手动切换为 DeepSeek（官方 API Key）或 Tavily。不会自动切换到付费服务。
+DuckDuckGo 不可达、被限流或没有结果时，会自动改用 Bing，并在结果中保留失败原因。两者都失败时显示原因，并提示前往「设置 → 插件市场 → 已安装 → 联网搜索 → 配置」，手动切换为 DeepSeek（官方 API Key）或 Tavily。不会自动切换到付费服务。
 DeepSeek 使用官方搜索服务，其他供应商或中转平台的密钥不能替代其配置；Tavily 使用基础搜索。
 多租户模式要求模型请求经过平台网关，暂不开放 DeepSeek 的独立密钥搜索，可选择 DuckDuckGo 或 Tavily。该限制不自动切换搜索服务。
 结果包含来源网址，Agent 可以据此引用资料；搜索摘要不等于已经读取完整网页。

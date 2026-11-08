@@ -74,7 +74,7 @@ ffmpeg.ffprobe("assets/first.mp4", (error, data) => {
 - `askUser`：提问器，通过 `context.question.ask` 一次发送一个或多个问题，等待用户回答或明确跳过后继续执行。简单提问传 `{ title, question, options? }`，返回 `{ answer }`；多个问题传 `{ title, question, fields }`，前端使用 `@form-create/element-ui` 渲染，返回 `{ answer, values }`。`fields` 最多 12 项，每项一个问题，包含唯一 `field`、`title`、`type`，默认可留空，可设置 `required`、`placeholder`；支持 `input`、`textarea`、`radio`、`checkbox`、`select`、`inputNumber`、`switch`，选择类字段必须提供 `options`。动态表单与顶层 `options` 不同时使用。点击“跳过”返回 `{ answer: "用户跳过了本次提问", skipped: true }`，不要求填写必填项，也不停止 Agent；停止或断开对话仍会取消等待。问题、回答和跳过结果沿用 Pi 工具调用历史保存。
 - `canvas`：画布操作工具，通过可选的 `context.canvas` 控制本轮绑定的激活画布。读取工具为概览 `getCanvas`、筛选分页 `findCanvasNodes`、按 ID 投影/分段读取 `getCanvasNodes`、局部连接 `getCanvasEdges`、目标节点函数查询 `getNodeTools`；每次最多 64 KiB，按 `hasMore/nextCursor` 续读，大节点值沿 `path` 配合文本或对象/数组偏移继续读取。`context.canvas` 只需要画布 ID 和调用入口，不注入全部函数清单。变更工具提供 `addNode`、`deleteNodes`、`moveNodes`、`renameNodes`、`connectNodes`、`deleteEdges`、`selectNodes`、`fitCanvas`，以及节点注册函数的统一执行入口 `nodeTools`；`deleteNodes`/`moveNodes`/`renameNodes`/`connectNodes`/`deleteEdges` 均一次接受多个目标进行批量操作。参数规则由 `@toonflow/tool-canvas/runtime` 的 Zod schema 共享。没有激活画布时不提供这些工具；空画布仍可新增节点，再查询并调用新节点的函数。执行走 Agent 流与回传接口，修改由当前 Vue Flow 实例完成并复用画布保存逻辑，读取不触发保存，不通过直接编辑 JSON 控制画布。
 - `workspace`：工作区读取、写入、编辑和目录列表，可开启只读模式。
-- `webSearch`：默认使用免密钥的 DuckDuckGo，可配置切换 DeepSeek 或 Tavily 并填写对应密钥；支持设置结果数量和超时。
+- `webSearch`：默认免密钥，先请求 DuckDuckGo，失败或没有结果时改用 Bing；也可切换 DeepSeek 或 Tavily 并填写对应密钥。支持设置结果数量和超时。
 - `webFetch`：使用 Bun 原生 fetch 读取网页，可设置超时与正文长度；最多 5 次重定向和 2 MiB 响应正文，不预判 DNS 公网地址，兼容 Fake-IP，网络隔离由部署环境负责。
 
 工具插件是可信的服务端代码，导入后拥有服务器进程权限，**不是沙箱**。`context.resolvePath` 等方法限制现有工作区工具的行为，不能阻止第三方插件自行调用系统 API。仅安装可信来源的工具文件。

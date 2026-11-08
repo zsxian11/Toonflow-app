@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ToolDefinition, ToolPlugin } from "@toonflow/tools-scaffold/runtime";
+import { createSourceTextTool } from "./chapters";
 import { createSearchTools } from "./search";
 
 const configSchema = z.object({ readOnly: z.boolean().default(false) }).strict();
@@ -9,12 +10,18 @@ const plugin: ToolPlugin = {
   validateConfig: config => configSchema.parse(config),
   createTools({ cwd, config, files, resolvePath, sdk }) {
     const { readOnly } = configSchema.parse(config);
+    const readTool = sdk.defineTool(sdk.createReadToolDefinition(cwd, { operations: {
+      readFile: path => files.readFile(path, true),
+      access: path => files.access(path, true),
+      detectImageMimeType: path => files.detectImageMimeType(path, true),
+    } }));
+    readTool.promptGuidelines = [
+      ...(readTool.promptGuidelines ?? []),
+      "小说、剧本和超过约 50KB 的故事文本用 sourceText 扫描全文目录并按章读取。read 单次约 50KB，不能把第一次截断当成全文。",
+    ];
     const tools: ToolDefinition[] = [
-      sdk.defineTool(sdk.createReadToolDefinition(cwd, { operations: {
-        readFile: path => files.readFile(path, true),
-        access: path => files.access(path, true),
-        detectImageMimeType: path => files.detectImageMimeType(path, true),
-      } })),
+      readTool,
+      createSourceTextTool(files),
       sdk.defineTool(sdk.createLsToolDefinition(cwd, { operations: {
         exists: async path => {
           try { await files.access(path, true); return true; }
