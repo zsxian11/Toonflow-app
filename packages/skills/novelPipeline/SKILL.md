@@ -1,6 +1,7 @@
 ---
 name: novelPipeline
-description: 以 ComfyUI 为默认图视频后端，把小说或剧本做成可审阅的 bible 状态与画布资产。用于阅读小说自动抽角色、多视图出图、分集确认、大纲设定与分镜提示词；明确只要讨论文字或编辑本技能时不启动制作。
+description: 以 ComfyUI 为默认图视频后端，把小说或剧本做成可审阅的 bible 状态与画布资产。仅当用户明确点名本技能时使用；默认制作请使用 production。明确只要讨论文字或编辑本技能时不启动制作。
+disable-model-invocation: true
 metadata:
   version: "1.1.0"
   displayName: 小说制片（Comfy）
@@ -9,6 +10,8 @@ metadata:
 ---
 
 # 小说制片流水线（Comfy 为主）
+
+自动制作已改走 production。只有用户点名本技能时才执行。
 
 把小说或剧本落成工作区 `bible/` 结构化文件，再用画布节点经 **ComfyUI** 出图/出视频。默认媒体模型供应商为 `comfyui`；未配置时停止并请用户到「设置 → 媒体模型 → ComfyUI」填写 `baseUrl` 与 API 工作流，**不得静默改用 Seedance 或其他云厂商**。
 

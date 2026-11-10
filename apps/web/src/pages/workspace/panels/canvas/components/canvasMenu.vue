@@ -402,6 +402,29 @@ async function applyCanvas(canvasId: string, directory: string, signal?: AbortSi
   signal?.throwIfAborted();
 }
 
+async function moveCanvas(canvasId: string, folder: string, signal?: AbortSignal) {
+  const directory = getCanvasDirectory(signal);
+  await getCanvases(signal);
+  const canvas = canvases.value.find(item => item.id === canvasId);
+  if (!canvas) throw new Error("画布不存在，请重新获取画布列表");
+  folder = canvasFolder(folder);
+  const fileName = canvas.id.split("/").at(-1);
+  if (!fileName) throw new Error("画布路径无效");
+  const target = `${folder ? `${folder}/` : ""}${fileName}`;
+  if (target === canvas.id) return canvas.id;
+  if (!performFileAction) throw new Error("工作区文件管理尚未就绪");
+  busy.value = true;
+  try {
+    await ensureCanvasDirectory(directory, folder, signal);
+    checkCanvasDirectory(directory, signal);
+    await performFileAction(directory, "move", canvas.id, target, "canvas");
+    checkCanvasDirectory(directory, signal);
+    return target;
+  } finally {
+    if (props.directory === directory) busy.value = false;
+  }
+}
+
 async function switchCanvas(canvasId: string, signal?: AbortSignal) {
   const directory = getCanvasDirectory(signal);
   canvasListVisible.value = false;
@@ -485,14 +508,37 @@ async function removeCanvas(canvas: Canvas) {
   }
 }
 
-async function createCanvasFile(directory: string, name?: string, signal?: AbortSignal) {
+async function ensureCanvasDirectory(directory: string, folder: string, signal?: AbortSignal) {
+  if (!folder) return;
+  const files = useWorkspaceFiles(directory);
+  let current = "";
+  for (const part of folder.split("/")) {
+    checkCanvasDirectory(directory, signal);
+    if (part.toLowerCase() === "assets" || part.toLowerCase() === ".agent") throw new Error(`“${part}”是保留目录名称，请使用其他文件夹名称。`);
+    normalizeFolderName(part);
+    current = current ? `${current}/${part}` : part;
+    try {
+      await files.mkdir(current);
+    } catch (err) {
+      if (!axios.isAxiosError<{ data?: { code?: string } }>(err) || err.response?.status !== 409 || err.response.data.data?.code !== "EEXIST") throw err;
+    }
+  }
+}
+
+function canvasFolder(folder?: string) {
+  return (folder ?? "").replaceAll("\\", "/").replace(/^\/+|\/+$/g, "");
+}
+
+async function createCanvasFile(directory: string, name?: string, signal?: AbortSignal, folder = "") {
   if (name !== undefined) name = normalizeCanvasName(name);
+  folder = canvasFolder(folder);
+  await ensureCanvasDirectory(directory, folder, signal);
   const files = useWorkspaceFiles(directory);
   const flow = { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
   for (let number = 1; ; number++) {
     checkCanvasDirectory(directory, signal);
     const canvasName = name ?? `画布${number}`;
-    const id = `${canvasName}.json`;
+    const id = `${folder ? `${folder}/` : ""}${canvasName}.json`;
     try {
       await files.writeJson(id, { toonflowCanvas: true, ...flow }, true);
       return { id, name: canvasName, flow };
@@ -536,11 +582,11 @@ async function listCanvases(directory: string, path = "", recursive = false, sig
   };
 }
 
-async function addCanvas(name?: string, signal?: AbortSignal): Promise<string> {
+async function addCanvas(name?: string, signal?: AbortSignal, folder?: string): Promise<string> {
   const directory = getCanvasDirectory(signal);
   busy.value = true;
   try {
-    const canvas = await createCanvasFile(directory, name, signal);
+    const canvas = await createCanvasFile(directory, name, signal, folder);
     checkCanvasDirectory(directory);
     canvases.value = [...canvases.value, canvas];
     signal?.throwIfAborted();
@@ -807,7 +853,7 @@ function syncDocumentNode(canvasId: string, nodeId: string, handleId: string, te
   else if (inline) (data.outputs ??= {})[handleId] = { dataType: "STRING", value: text };
 }
 
-defineExpose({ getCanvases, peekCanvases, initialized, addCanvas, switchCanvas, renameCanvas, syncCanvasPath, syncDocumentNode, loadError });
+defineExpose({ getCanvases, peekCanvases, initialized, addCanvas, moveCanvas, switchCanvas, renameCanvas, syncCanvasPath, syncDocumentNode, loadError });
 </script>
 
 <style lang="scss" scoped>

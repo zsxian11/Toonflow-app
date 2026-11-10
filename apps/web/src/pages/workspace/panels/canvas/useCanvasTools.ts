@@ -21,7 +21,8 @@ export function useCanvasTools(options: {
   menu(): {
     getCanvases(signal?: AbortSignal): Promise<{ id: string; name: string }[]>;
     peekCanvases(): { id: string; name: string }[];
-    addCanvas(name?: string, signal?: AbortSignal): Promise<string>;
+    addCanvas(name?: string, signal?: AbortSignal, directory?: string): Promise<string>;
+    moveCanvas(canvasId: string, directory: string, signal?: AbortSignal): Promise<string>;
     switchCanvas(canvasId: string, signal?: AbortSignal): Promise<void>;
     renameCanvas(canvasId: string, name: string, signal?: AbortSignal): Promise<void>;
   };
@@ -84,7 +85,8 @@ export function useCanvasTools(options: {
       },
       async call(request, signal) {
         if (redirected) return redirected.call(request, signal);
-        const changesCanvas = request.name === "addCanvas" || request.name === "switchCanvas" || request.name === "renameCanvas";
+        const movesActiveCanvas = request.name === "moveCanvas" && (typeof request.args.canvasId !== "string" || request.args.canvasId === id);
+        const changesCanvas = request.name === "addCanvas" || request.name === "switchCanvas" || request.name === "renameCanvas" || movesActiveCanvas;
         // ACT: 转写按音频时长运行，复用 ASR 的停滞与收尾超时，不套用画布操作的总时限。
         const callSignal = AbortSignal.any([workspaceSignal, ...(changesCanvas ? [] : [canvasSignal]), ...(request.name === "transcribeAudio" ? [] : [AbortSignal.timeout(request.name === "developPlugin" ? 360000 : 120000)]), ...(signal ? [signal] : [])]);
         let cancel = () => {};
@@ -184,8 +186,13 @@ export function useCanvasTools(options: {
         }
       }
       case "addCanvas": {
-        const { name } = canvasSchemas.addCanvas.parse(request.args);
-        return options.menu().addCanvas(name, signal);
+        const { name, directory } = canvasSchemas.addCanvas.parse(request.args);
+        return options.menu().addCanvas(name, signal, directory);
+      }
+      case "moveCanvas": {
+        const { canvasId: targetId = canvasId, directory } = canvasSchemas.moveCanvas.parse(request.args);
+        const movedId = await options.menu().moveCanvas(targetId, directory, signal);
+        return targetId === canvasId ? movedId : { canvasId: movedId };
       }
       case "switchCanvas": {
         const { canvasId: targetId } = canvasSchemas.switchCanvas.parse(request.args);

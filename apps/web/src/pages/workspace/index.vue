@@ -36,6 +36,7 @@
         </template>
       </el-segmented>
       <div class="bottomTools">
+        <el-button class="exportEpisodeButton" size="small" @click="exportVisible = true">导出本集</el-button>
         <el-card v-if="activePanel === 'canvas'" class="toolMenu" shadow="never" :bodyStyle="{ padding: '2px 4px' }">
           <div class="toolMenuContent" role="toolbar" aria-label="画布工具">
             <el-tooltip content="添加节点" placement="top" :showArrow="false" :hideAfter="0" :enterable="false" :triggerKeys="[]">
@@ -112,6 +113,7 @@
     </div>
     <floatingAgent v-model="agentVisible" :inert="workspaceStore.projectLoadingVisible" @resize="agentWidth = $event" />
     <settings v-model="settingsVisible" />
+    <exportEpisodeDialog v-model="exportVisible" />
     <el-dialog v-model="contactVisible" :title="contactInfo.title" width="min(360px, calc(100vw - 32px))" alignCenter appendToBody>
       <div class="contactContent">
         <q-r-code
@@ -145,11 +147,13 @@ import { useProviderBalances } from "@/lib/providerBilling";
 import canvasPanel from "./panels/canvas/canvasHost.vue";
 import type { DocumentNodeOptions } from "./panels/canvas/canvasFiles";
 import workspaceMenu from "./components/workspaceMenu.vue";
+import exportEpisodeDialog from "./components/exportEpisodeDialog.vue";
 import floatingAgent from "./components/floatingAgent.vue";
 
 const documentPanel = defineAsyncComponent(() => import("./panels/document/index.vue"));
 
 const activePanel = ref<"canvas" | "document">("canvas");
+const exportVisible = ref(false);
 const selectedTool = ref<"move" | "hand">("move");
 const sideButtonEvents = ["mousedown", "mouseup", "auxclick"] as const;
 // 鼠标侧键会直接触发原生历史导航，需在 DOM 事件阶段拦截，避免生成中的工作区被误关闭。
@@ -449,6 +453,13 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
       gap: 8px;
       transform: translateX(-50%);
       pointer-events: auto;
+
+      .exportEpisodeButton {
+        height: 32px;
+        border-color: var(--el-border-color-light);
+        background: color-mix(in srgb, var(--el-bg-color-overlay) 70%, transparent);
+        backdrop-filter: blur(6px);
+      }
 
       .toolMenu {
         flex-shrink: 0;

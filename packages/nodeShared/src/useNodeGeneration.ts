@@ -70,8 +70,26 @@ export function useNodeGeneration(outputs: Readonly<Ref<NodeOutputs>>, cancel: (
   function checkTask(task: NodeGenerationTask, context: NodePersistenceContext) {
     lifetime.signal.throwIfAborted();
     if (task.state === "cancelled") throw new DOMException("生成已取消", "AbortError");
-    if (findNode(id) !== node || savedData.value.mediaTask?.taskId !== task.taskId || task.directory !== context.directory || getPersistence?.()?.directory !== context.directory) {
+    const current = getPersistence?.();
+    // 画布卸载后服务端任务仍按 taskId 保留，不把这次状态查询记成失败。
+    if (!current) return false;
+    if (findNode(id) !== node || savedData.value.mediaTask?.taskId !== task.taskId || task.directory !== context.directory || current.directory !== context.directory) {
       throw new Error("节点或工作区已变化，本次任务结果不再应用");
+    }
+    if (task.nodeId === id && task.canvasPath !== current.canvasPath) task.canvasPath = current.canvasPath;
+    return true;
+  }
+
+  async function saveTask(task: NodeGenerationTask, signal: AbortSignal) {
+    const current = getPersistence?.();
+    if (!current || task.nodeId !== id || task.directory !== current.directory) return;
+    try { await current.save(signal); }
+    catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      const latest = getPersistence?.();
+      if (!latest || task.nodeId !== id || task.directory !== latest.directory || (!message.includes("画布已关闭") && !message.includes("画布已切换"))) throw error;
+      task.canvasPath = latest.canvasPath;
+      await latest.save(signal);
     }
   }
 
@@ -80,18 +98,19 @@ export function useNodeGeneration(outputs: Readonly<Ref<NodeOutputs>>, cancel: (
       taskId: task.taskId, nodeId: id, canvasPath: task.canvasPath,
       isCancelled: () => task.state === "cancelled",
       async onStatus(value: NodeMediaTaskStatus) {
-        checkTask(task, context);
+        if (!checkTask(task, context)) return;
         if (value.nodeId && value.nodeId !== id) throw new Error("生成任务不属于当前节点");
-        if (value.canvasPath && value.canvasPath !== task.canvasPath) throw new Error("生成任务的原画布归属不一致");
-        const before = JSON.stringify([task.state, task.resumable, task.providerData]);
+        if (value.canvasPath && value.canvasPath !== task.canvasPath) {
+          const current = getPersistence?.();
+          if (!current || task.nodeId !== id || task.directory !== current.directory || task.canvasPath !== current.canvasPath) {
+            throw new Error("生成任务的原画布归属不一致");
+          }
+        }
+        const before = JSON.stringify([task.state, task.resumable, task.providerData, task.canvasPath]);
         if (value.state) task.state = value.state;
         if (value.resumable !== undefined) task.resumable = value.resumable;
         if (value.providerData !== undefined) task.providerData = value.providerData;
-        if (before !== JSON.stringify([task.state, task.resumable, task.providerData])) {
-          const current = getPersistence?.();
-          if (!current) throw new Error("画布已关闭，无法保存任务状态");
-          await current.save(signal);
-        }
+        if (before !== JSON.stringify([task.state, task.resumable, task.providerData, task.canvasPath])) await saveTask(task, signal);
         if (task.state === "interrupted" && task.resumable === false) {
           throw new Error([value.result?.message, "上次生成结果未知，可能已接单或扣费。请先核对供应商任务；如需重新生成，请点击“放弃任务”。"].filter(Boolean).join("\n"));
         }
@@ -140,11 +159,10 @@ export function useNodeGeneration(outputs: Readonly<Ref<NodeOutputs>>, cancel: (
     const task = savedData.value.mediaTask;
     if (!options || !task) return;
     const context = getPersistence?.();
-    if (!context) throw new Error("画布已关闭，生成结果将在重新打开后恢复");
-    checkTask(task, context);
+    if (!context || !checkTask(task, context)) return;
     const applied = task.applied;
     task.applied = true;
-    try { await context.save(signal); }
+    try { await saveTask(task, signal); }
     catch (error) { task.applied = applied; throw error; }
   }
 
@@ -177,6 +195,7 @@ export function useNodeGeneration(outputs: Readonly<Ref<NodeOutputs>>, cancel: (
     if (!options || !task || !context || !needsRecovery()) return Promise.resolve();
     if (task.nodeId !== id || task.directory !== context.directory || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(task.taskId)
       || !["image", "video", "audio"].includes(task.mediaType)) return Promise.reject(new Error("保存的生成任务归属无效，请放弃此任务后重新生成"));
+    if (task.canvasPath !== context.canvasPath) task.canvasPath = context.canvasPath;
     recoveryController = new AbortController();
     const signal = AbortSignal.any([lifetime.signal, recoveryController.signal]);
     recovering = execute(async () => {

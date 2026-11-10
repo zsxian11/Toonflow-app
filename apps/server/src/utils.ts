@@ -10,6 +10,7 @@ import * as mediaProvider from "@/utils/media/provider";
 import * as mediaBilling from "@/utils/media/billing";
 import * as mediaPreview from "@/utils/media/preview";
 import * as ffmpeg from "@/utils/ffmpeg";
+import * as production from "@/utils/production/exportEpisode";
 import * as pluginInstall from "@/utils/plugins/install";
 import * as pluginDevelopment from "@/utils/plugins/development";
 import conf, { cleanNodeMenuSettings, removeLegacySettings } from "@/utils/conf";
@@ -51,6 +52,7 @@ export default {
   mediaBilling,
   mediaPreview,
   ffmpeg,
+  production,
   pluginInstall,
   pluginDevelopment,
   conf,

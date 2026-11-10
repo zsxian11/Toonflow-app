@@ -19,11 +19,7 @@ metadata:
 3. 用 `getCanvasNodes` 按需读取目标字段，`getCanvasEdges` 查询局部连接；需要调整节点内容时，用 `getNodeTools` 读取该节点函数的描述和完整 `parameters`，通过 `nodeTools` 调用。
 4. 完成结构调整后，按需调用 `fitCanvas` 展示结果，再用 `getCanvasNodes` / `getCanvasEdges` 只核对受影响节点、名称与连接。`arrangeCanvas` 已自动适配视口，不必重复调用 `fitCanvas`。只报告工具实际完成的操作。
 
-故事或视频制作先读取 [制作阶段与确认](references/videoProduction.md#0-逐阶段协作)。默认只落实当前已确认阶段；先逐步收集信息，再展示阶段成果并询问调整，等用户明确继续。不因用户说“做一个短片”就一次创建全部分镜与生成节点，也不把提问失败、跳过或沉默当作确认。
-
-默认从本次完整剧本生成角色、场景、道具资产，再拆为多镜头片段；一片段对应一份视频提示词和一个视频节点，资产直接用于多参生成。写资产提示词前读取 [资产图规范](../script/references/assetGuide.md)，写视频提示词前读取 [片段制作指南](../script/references/productionGuide.md)，角色面部特写与正侧背完整三视图不能省成通用单张剧情图。
-
-文档内链接相对当前文件目录。跨技能的 `script` 规范按 `available_skills` 中实际 `location` 定位；依赖缺失时说明缺项，仅继续不依赖它的结构操作，不凭简介补造规范。
+故事或视频制作先读取 production 技能。本手册只负责建节点、连线和调用节点函数。需要把已确认内容落到节点时，再读 [画布转换](references/videoProduction.md)；制作顺序、确认和模型选择以 production 为准。不因用户说“做一个短片”就一次创建全部分镜与生成节点，也不把提问失败、跳过或沉默当作确认。
 
 以下写法表示“工具名（参数对象）”。直接调用对应工具，不额外包一层 `{ name, args }`；只有 `nodeTools` 自身含有 `name` 和 `args` 参数。
 
@@ -59,7 +55,8 @@ metadata:
 
 | 工具 | 参数 | 行为与返回 |
 | --- | --- | --- |
-| `addCanvas` | `{ name? }` | 创建空白画布并切换到它；省略名称时自动使用未占用的“画布N”。返回新激活画布的概览。 |
+| `addCanvas` | `{ name?, directory? }` | 创建空白画布并切换到它。`directory` 是工作区相对目录，不存在时逐级创建。省略名称时自动使用未占用的“画布N”。返回新激活画布的概览。 |
+| `moveCanvas` | `{ canvasId?, directory }` | 把画布移动到 `directory`。省略 `canvasId` 时移动当前画布并返回新画布概览；移动其他画布时返回新的 `canvasId`，不切换当前画布。 |
 | `switchCanvas` | `{ canvasId }` | 等待当前修改保存后切换到指定画布，返回新激活画布的概览。 |
 | `renameCanvas` | `{ canvasId?, name }` | 省略 ID 时重命名激活画布，同时修改 JSON 文件名。返回操作后的激活画布概览。 |
 
@@ -119,11 +116,11 @@ metadata:
 
 ### 把创作方案转成可执行画布
 
-剧本、小说或创意制作任务需要把分镜、素材和提示词落实为节点时，读取 [视频制作的画布转换](references/videoProduction.md)。其中说明哪些内容放进文本节点、如何复用媒体和连接真实依赖，以及后台生成的完成核对。通用参数仍以本手册和当前工具返回的说明为准。
+剧本、小说或创意制作任务先按 production 技能推进。需要把已确认内容落实为节点时，读取 [视频制作的画布转换](references/videoProduction.md)。其中说明哪些内容放进文本节点、如何复用媒体和连接真实依赖。通用参数仍以本手册和当前工具返回的说明为准。
 
 ### 新建画布并添加节点
 
-调用 `addCanvas({ "name": "分镜草稿" })`，再用 `getCanvas({ "include": ["nodeTypes"] })` 查询 `availableNodeTypes`，选取符合用户要求的类型传入 `addNode` 的 `type`。例如位置可用 `{ "x": 120, "y": 160 }`；名称由用户意图决定。记录返回的 `node.id`，用 `getNodeTools` 查询并调用函数填写节点内容，最后调用 `fitCanvas({})`。
+调用 `addCanvas({ "name": "剧本", "directory": "画布" })`，再用 `getCanvas({ "include": ["nodeTypes"] })` 查询 `availableNodeTypes`，选取符合用户要求的类型传入 `addNode` 的 `type`。例如位置可用 `{ "x": 120, "y": 160 }`；名称由用户意图决定。记录返回的 `node.id`，用 `getNodeTools` 查询并调用函数填写节点内容，最后调用 `fitCanvas({})`。已有画布需要换目录时调用 `moveCanvas`，不要直接改文件。
 
 ### 连接两个已有节点
 
