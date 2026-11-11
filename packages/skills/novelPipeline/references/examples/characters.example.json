@@ -21,7 +21,27 @@
         }
       ],
       "refImagePaths": [],
-      "adoptedImagePaths": []
+      "adoptedImagePaths": [],
+      "states": [
+        {
+          "id": "linFengCostumeArena",
+          "kind": "costume",
+          "label": "仙门大会服",
+          "trigger": "仙门大会出场",
+          "prompt": "以已定稿的林风角色参考板为底图，保持同一人、同一版式与识别锚点，仅将服饰改为仙门大会制服：……",
+          "adoptedImagePaths": [],
+          "status": "draft"
+        },
+        {
+          "id": "linFengDamageSleeve",
+          "kind": "damage",
+          "label": "袖破战损",
+          "trigger": "与宫本交锋后右袖撕裂",
+          "prompt": "以已定稿的林风角色参考板为底图，保持同一人、同一版式，其他不变，只改一处：角色自身右侧袖口纵向撕裂露出内衬，无血。",
+          "adoptedImagePaths": [],
+          "status": "draft"
+        }
+      ]
     }
   ]
 }

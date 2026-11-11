@@ -27,9 +27,10 @@ Agent 与用户共同维护的正式角色表。图片节点提示词与采用�
 | `sourceQuotes` | 原文摘句数组；可空 |
 | `inferred` | 无原文外貌时为 `true` |
 | `settingConstraints` | 覆盖全局约束的角色级补充，可空 |
-| `views` | 多视图提示词数组 |
+| `views` | 多视图提示词数组（基础态） |
 | `refImagePaths` | 工作区相对路径参考图 |
-| `adoptedImagePaths` | 已采用生成图路径 |
+| `adoptedImagePaths` | 已采用生成图路径（基础态） |
+| `states` | 可选；剧情状态变体数组（服饰/战损等），见下表 |
 
 ## `views[]`
 
@@ -38,6 +39,22 @@ Agent 与用户共同维护的正式角色表。图片节点提示词与采用�
 | `key` | `face` / `front` / `side` / `back` / `full`；参考板可用 `sheet` |
 | `prompt` | 可直接交给图片生成的完整提示词 |
 | `status` | `draft` / `confirmed` / `generated` / `adopted` |
+
+## `states[]`（剧情状态变体）
+
+按已确认分集/大纲提案；瞬时表情不建项。与 production 的状态矩阵同语义。
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | 稳定 id，如 `linFengCostumeArena`、`linFengDamageSleeve`；分镜用 `characterStateIds` 引用 |
+| `kind` | `costume` / `damage` / `other` |
+| `label` | 短名，如「大会服」「袖破战损」 |
+| `trigger` | 引发该状态的场次或事件 |
+| `prompt` | 以基础采用图为参考的改图/出图提示词；写清不变项与仅改变项 |
+| `adoptedImagePaths` | 该状态已采用图；未出图前为空，不得填入基础态路径冒充 |
+| `status` | `draft` / `confirmed` / `generated` / `adopted` / `skipped` |
+
+战损版 id 建议与 actionSpace 资产清单对齐（如角色基础 `C001` 对应战损 `C001-D1` 时可在 `label` 或 `id` 中注明）。破损发生的那一段仍可参考完好态；**下一段起**分镜改引战损 `id`，视频节点改连战损采用图。
 
 默认新建角色使用一张 **sheet** 参考板（特写+正侧背同一画），prompt 模板：
 
@@ -57,4 +74,4 @@ Agent 与用户共同维护的正式角色表。图片节点提示词与采用�
 
 - 合并别名到同一 `id`。
 - 优先保留影响识别的体型、发型、配色、伤疤、标志物。
-- 换装影响跨集识别时另建变体角色或在 `views` 增加服装态，并在 outline 注明。
+- 换装、持续战损影响跨集识别时写入 `states[]`（优先），或另建变体角色；在 outline / 分镜注明适用场次。不把基础 `adoptedImagePaths` 改写成变体图。

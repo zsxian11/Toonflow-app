@@ -19,7 +19,9 @@
       "dialogue": "",
       "audio": "风声、远处钟鸣",
       "characterIds": ["linFeng"],
+      "characterStateIds": ["linFeng"],
       "refImagePaths": [],
+      "previsStatus": "skipped",
       "prompts": {
         "comfy": "国风写实，约15秒。场景：山门外石阶。景别：全景。运镜：缓推。转场：淡入->直切。画面：林风拾级而上，停步望向山门匾额。角色：林风，青衫束发与参考图一致。对白/声音：；风声、远处钟鸣。约束：保持角色与参考图一致；古代仙侠；禁止现代服饰；无水印字幕。"
       },

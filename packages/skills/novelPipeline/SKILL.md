@@ -98,6 +98,7 @@ schema、示例与字段说明：
 3. 需要多候选时，`setConfig` 写入 `n`（1–16）；生成后用 `listImageResults` / `adoptImageResult` 或请用户在节点上采用。
 4. 参考板可用宫格切分；采用路径回写 `characters[].adoptedImagePaths`。
 5. 润色或按参考图调整：先改 `characters.json` 的 `views[].prompt` / `refImagePaths`，再 `setPrompt` 并重新生成。
+6. **剧情状态变体**（服饰/战损等）：分集或大纲已确认后，按 [角色圣经](references/characters.md) 的 `states[]` 提案清单，用户确认后再出图；采用路径写入对应 `states[].adoptedImagePaths`，不覆盖基础态。细则与 production 状态矩阵同语义。
 
 ---
 
@@ -117,8 +118,8 @@ schema、示例与字段说明：
 完整字段与补丁协议见 [分镜表](references/shotSheet.md)。
 
 1. 从已确认集复制模型与时长预算到 `shotSheet.json` 根字段。
-2. 按 [shotCraft](references/shotCraft.md) 写镜头；按 [comfyVideoPrompt](references/comfyVideoPrompt.md) 渲染每镜 `prompts.comfy`。
-3. 用户确认后建视频节点并 `setPrompt`；明确要求生成时才 `generateVideo`。
+2. 按 [shotCraft](references/shotCraft.md) 写镜头，填 `characterStateIds` / `sceneStateId` 等状态映射；按 [comfyVideoPrompt](references/comfyVideoPrompt.md) 渲染每镜 `prompts.comfy`，`refImagePaths` 对齐状态采用图。
+3. 用户确认后建视频节点，连接**本镜状态图**并 `setPrompt`；明确要求生成时才 `generateVideo`。战损镜之后下一段改连战损状态图。
 4. **对话优化**：只补丁点名的 `shotId`，写回 JSON 并同步对应节点；禁止整表重写或改确认过的模型/段数。
 
 ---
