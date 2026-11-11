@@ -21,7 +21,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
+import { computed, inject, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { useVueFlow } from "@vue-flow/core";
 import { IconCube3dSphere } from "@tabler/icons-vue";
 import { ElLoading, ElMessage } from "element-plus";
@@ -50,9 +50,10 @@ defineOptions({
   icon: IconCube3dSphere,
   handles: [{ id: "in", type: "target", dataType: ["STRING", "IMAGE", "VIDEO"], label: "文本、图片、视频输入" }] satisfies NodeHandle[],
 });
-const { node, nodeProps, previewReady, ai, files, nodeEvent } = useNode({ label: "3D导演台", onModelsChanged: () => void loadModels() });
+const { node, nodeProps, previewReady, ai, files, nodeEvent, nodeTools } = useNode({ label: "3D导演台", onModelsChanged: () => void loadModels() });
 const vLoading = ElLoading.directive;
-const { addNodes, findNode, getNodes, nodeTypes, removeNodes } = useVueFlow();
+const { addNodes, addEdges, findNode, getNodes, nodeTypes, removeNodes } = useVueFlow();
+const batchHistory = inject<(action: () => Promise<void>) => Promise<void>>("batchCanvasHistory", action => action());
 const mediaFiles = useNodeFiles();
 const exportingVideo = ref(false);
 const exportingImage = ref("");
@@ -69,6 +70,8 @@ const data = computed(() => node.data as typeof node.data & {
   model?: string;
   anchors?: CameraAnchor[];
   selectedPlanId?: string;
+  /** 导出预演视频时优先连到的视频生成节点 id；无效则回退选中或最近节点。 */
+  exportTargetId?: string;
 });
 const { refList, referenceMentions, materialMentions, selectMaterialReference, selectAssetReference, setReferencePreview, removeReference } = useNodeReferences();
 const promptModel = computed({ get: () => data.value.promptModel ?? [], set: (value: PromptModel) => { data.value.promptModel = value; } });
@@ -198,6 +201,34 @@ nodeEvent.on("save", async (reason) => {
   }
 });
 
+function findVideoGenerationTarget() {
+  const candidates = getNodes.value.filter(item => item.type === "remote-videoGenerationNode" && item.id !== node.id);
+  if (!candidates.length) return;
+  const exportTargetId = data.value.exportTargetId;
+  if (exportTargetId) {
+    const specified = candidates.find(item => item.id === exportTargetId);
+    if (specified) return specified;
+  }
+  const selected = candidates.filter(item => item.selected);
+  if (selected.length === 1) return selected[0];
+  if (selected.length > 1) return;
+  // ACT: 未指定且未单选时连空间最近的视频生成节点；画布上没有目标则不连，避免乱接。
+  const originX = node.computedPosition.x + (node.dimensions.width || 320) / 2;
+  const originY = node.computedPosition.y + (node.dimensions.height || 300) / 2;
+  let nearest = candidates[0]!;
+  let nearestDistance = Infinity;
+  for (const item of candidates) {
+    const x = item.computedPosition.x + (item.dimensions.width || 320) / 2 - originX;
+    const y = item.computedPosition.y + (item.dimensions.height || 300) / 2 - originY;
+    const distance = x * x + y * y;
+    if (distance < nearestDistance) {
+      nearest = item;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+}
+
 async function exportToCanvas(kind: "image" | "video", key: string, aspect: number, render: (signal: AbortSignal) => Promise<File>) {
   if (kind === "video" ? exportingVideo.value : exportingImage.value) return;
   const type = `remote-${kind}Node`;
@@ -211,6 +242,7 @@ async function exportToCanvas(kind: "image" | "video", key: string, aspect: numb
   let uploadStarted = false;
   let stopWatching = () => {};
   let workspaceFiles: ReturnType<typeof files.getWorkspaceFiles> | undefined;
+  let wiredTargetLabel = "";
   function addExportNode(label: string) {
     const width = 240 * aspect + 18;
     const x = node.computedPosition.x + (node.dimensions.width || 320) + 80;
@@ -248,9 +280,23 @@ async function exportToCanvas(kind: "image" | "video", key: string, aspect: numb
     (exportNode.data.outputs ??= {})[kind] = {
       dataType: kind === "image" ? "IMAGE" : "VIDEO", value: { url: path, mimeType: file.type },
     };
+    if (kind === "video") {
+      const target = findVideoGenerationTarget();
+      if (target && findNode(id) === exportNode && findNode(target.id) === target) {
+        await batchHistory(async () => {
+          if (findNode(id) !== exportNode || findNode(target.id) !== target) return;
+          addEdges({ id: crypto.randomUUID(), source: id, sourceHandle: "video", target: target.id, targetHandle: "in" });
+        });
+        if (findNode(id) === exportNode && findNode(target.id) === target) {
+          wiredTargetLabel = String(target.data?.label || "视频生成");
+        }
+      }
+    }
     committed = true;
     if (kind === "video") exportProgress.value = 100;
-    ElMessage.success(`${kind === "image" ? "图片" : "视频"}已导出到画布`);
+    ElMessage.success(wiredTargetLabel
+      ? `视频已导出并连接到「${wiredTargetLabel}」`
+      : `${kind === "image" ? "图片" : "视频"}已导出到画布`);
   } catch (error) {
     if (!disposed && !discarded) ElMessage.error(error instanceof Error ? error.message : "导出失败，请重试");
     if (exportNode && findNode(id) === exportNode) removeNodes(id);
@@ -274,6 +320,23 @@ function exportVideo(aspect: number) {
   if (!plan) return;
   return exportToCanvas("video", "video", aspect, signal => renderVideo(scene.value, plan, aspect, signal, value => { exportProgress.value = value; }, lighting.value, sceneSettings.value));
 }
+
+nodeTools.register({
+  name: "setExportTarget",
+  description: "设置导出预演视频时优先连接的视频生成节点 id；传空字符串清除。导出时优先用该目标，其次画布上唯一选中的视频生成节点，否则连空间最近的；画布上没有视频生成节点则只建视频节点不连边",
+  parameters: z.strictObject({ nodeId: z.string() }),
+  execute({ nodeId }) {
+    const value = nodeId.trim();
+    if (!value) {
+      delete data.value.exportTargetId;
+      return { exportTargetId: "" };
+    }
+    const target = findNode(value);
+    if (!target || target.type !== "remote-videoGenerationNode") throw new Error("目标必须是画布上的视频生成节点");
+    data.value.exportTargetId = value;
+    return { exportTargetId: value };
+  },
+});
 
 function exportImage(anchor: CameraAnchor, aspect: number, time: number) {
   const name = `关键帧${anchors.value.findIndex(item => item.id === anchor.id) + 1}`;

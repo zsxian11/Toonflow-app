@@ -140,7 +140,19 @@ const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals 
   onModelsChanged: () => void refreshProviderModels(),
 });
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
-const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; generateAudio: boolean; other: Record<string, unknown> });
+const data = computed(() => node.data as {
+  prompt: string;
+  promptModel: PromptModel;
+  model: string;
+  duration?: number;
+  resolution: string;
+  ratio: string;
+  mode: string;
+  generateAudio: boolean;
+  other: Record<string, unknown>;
+  /** 难镜预演门禁：为 true 时必须已有可用的参考视频才能生成。 */
+  previsRequired?: boolean;
+});
 data.value.prompt ??= "";
 data.value.promptModel ??= [];
 data.value.model ??= "";
@@ -149,6 +161,7 @@ data.value.mode ??= "";
 data.value.generateAudio ??= true;
 data.value.ratio ??= "9:16";
 data.value.other ??= {};
+data.value.previsRequired ??= false;
 const { refList, referenceMentions, materialMentions, selectMaterialReference, selectAssetReference, setReferencePreview, removeReference } = useNodeReferences();
 const models = shallowRef<NodeMediaModel[]>([]);
 const modelsLoading = ref(false);
@@ -367,6 +380,9 @@ async function startGeneration() {
   if (!choice || !input) throw new Error("请先选择视频模型");
   if (!input.prompt) throw new Error("请输入生成提示词");
   if (refList.value.some(item => item.value === undefined)) throw new Error("引用节点暂无内容，请先补充引用内容");
+  if (data.value.previsRequired && !refList.value.some(item => item.dataType === "VIDEO" && item.value)) {
+    throw new Error("此片段需要白模预演参考视频：请先用 3D 导演台导出并连接到本节点，或关闭 previsRequired 后再生成");
+  }
   for (const match of input.prompt.matchAll(/\{\{ref (\d+)\}\}/g)) {
     const reference = refList.value[Number(match[1]) - 1];
     if (reference?.dataType === "STRING" && !reference.value?.trim()) throw new Error(`参考 ${match[1]} 的文本为空，请补充内容或移除提示词中的引用`);
@@ -428,6 +444,7 @@ function getConfig() {
       mode: selectedMode.value,
       generateAudio: data.value.generateAudio,
       other: data.value.other,
+      previsRequired: !!data.value.previsRequired,
     },
     models: models.value,
     ratios: ratioOptions,
@@ -437,7 +454,7 @@ function getConfig() {
 
 nodeTools.register({
   name: "getConfig",
-  description: "读取此视频生成节点的当前配置、自定义配置 other、可选视频模型能力、通用比例及适合当前引用的模式，models 中的 rules 声明自定义字段，不含密钥；时长与分辨率须符合 durationResolutionMap",
+  description: "读取此视频生成节点的当前配置（含 previsRequired 难镜预演门禁）、自定义配置 other、可选视频模型能力、通用比例及适合当前引用的模式，models 中的 rules 声明自定义字段，不含密钥；时长与分辨率须符合 durationResolutionMap",
   parameters: z.strictObject({}),
   async execute(_args, { signal }) {
     signal?.throwIfAborted();
@@ -449,7 +466,7 @@ nodeTools.register({
 
 nodeTools.register({
   name: "setConfig",
-  description: "修改此视频生成节点的模型、时长、分辨率、比例、模式、声音或自定义配置 other；先用 getConfig 查询能力，providerId 与 modelId 必须同时提供；other 按目标模型 rules 的 field 和值要求填写，仅更新传入字段，其余保留，切换模型时使用新模型默认值；mode 使用返回的原始字符串或数组，须匹配当前引用；不修改提示词、不启动生成",
+  description: "修改此视频生成节点的模型、时长、分辨率、比例、模式、声音、难镜预演门禁 previsRequired 或自定义配置 other；先用 getConfig 查询能力，providerId 与 modelId 必须同时提供；other 按目标模型 rules 的 field 和值要求填写，仅更新传入字段，其余保留，切换模型时使用新模型默认值；mode 使用返回的原始字符串或数组，须匹配当前引用；previsRequired 为 true 时生成前必须已有参考视频；不修改提示词、不启动生成",
   parameters: z.strictObject({
     providerId: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
@@ -458,6 +475,7 @@ nodeTools.register({
     ratio: z.enum(ratioOptions).optional(),
     mode: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
     generateAudio: z.boolean().optional(),
+    previsRequired: z.boolean().optional(),
     other: z.record(z.string(), z.json()).optional(),
   }).refine((args) => (args.providerId === undefined) === (args.modelId === undefined), "providerId 与 modelId 必须同时提供"),
   async execute(args, { signal }) {
@@ -484,6 +502,7 @@ nodeTools.register({
     if (args.ratio !== undefined) data.value.ratio = args.ratio;
     if (args.mode !== undefined) data.value.mode = JSON.stringify(args.mode);
     if (args.generateAudio !== undefined) data.value.generateAudio = args.generateAudio;
+    if (args.previsRequired !== undefined) data.value.previsRequired = args.previsRequired;
     data.value.other = other;
     return getConfig();
   },
@@ -503,7 +522,7 @@ nodeTools.register({
 
 nodeTools.register({
   name: "generateVideo",
-  description: "启动此节点的后台视频生成，使用当前提示词、模型、模式、时长、分辨率、比例和参考素材；立即返回已开始，用 getGenerationStatus 查询完成结果，cancelGeneration 停止生成",
+  description: "启动此节点的后台视频生成，使用当前提示词、模型、模式、时长、分辨率、比例和参考素材；若 previsRequired 为 true 且无参考视频则拒绝启动；立即返回已开始，用 getGenerationStatus 查询完成结果，cancelGeneration 停止生成",
   parameters: z.strictObject({}),
   execute(_args, { signal }) {
     signal?.throwIfAborted();
